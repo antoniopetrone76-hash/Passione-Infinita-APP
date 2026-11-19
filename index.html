@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0B2258" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Passione Infinita" />
+  <meta name="description" content="Associazione Passione Infinita • Festa dei Gigli - Barra 2027 • Ritorna 'a Festa (2003 - 2027) Sempre con.. Passione Infinita!" />
+
+  <title>Associazione Passione Infinita • Festa dei Gigli – Barra 2027 | Ritorna 'a Festa</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/jpeg" href="./logo-passione-infinita.jpg" />
+  <link rel="apple-touch-icon" href="./logo-passione-infinita.jpg" />
+
+  <!-- Google Fonts per lo stile ufficiale della locandina: Cinzel (Titoli Istituzionali) & Kaushan Script (Motti Corsivi) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800;900&family=Kaushan+Script&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 & Babel per esecuzione immediata in qualsiasi browser -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    :root {
+      --pi-blue-dark: #071942;
+      --pi-blue: #0B2258;
+      --pi-blue-bright: #143A8C;
+      --pi-red: #C8102E;
+      --pi-red-bright: #E31837;
+      --pi-white: #FFFFFF;
+      --pi-sky: #EAF3FF;
+    }
+
+    body {
+      background-color: #071942;
+      background-image:
+        linear-gradient(180deg, rgba(7, 25, 66, 0.72) 0%, rgba(11, 34, 88, 0.64) 45%, rgba(7, 25, 66, 0.78) 100%),
+        url('./sfondo-passione-infinita.jpg');
+      background-size: cover;
+      background-position: center top;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+      color: #FFFFFF;
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .font-institutional {
+      font-family: 'Cinzel', Georgia, serif;
+      letter-spacing: 0.03em;
+    }
+
+    .font-motto {
+      font-family: 'Kaushan Script', cursive;
+    }
+
+    /* Stemma ufficiale con doppio anello Bianco e Rosso come nella locandina */
+    .pi-logo-ring {
+      border: 3px solid #FFFFFF !important;
+      box-shadow: 0 0 0 4px #C8102E, 0 12px 28px rgba(0, 0, 0, 0.45) !important;
+      background-color: #FFFFFF !important;
+    }
+
+    /* Fascia tricolore Rosso - Bianco - Blu Passione Infinita */
+    .pi-tricolor-bar {
+      background: linear-gradient(90deg, #C8102E 0%, #E31837 28%, #FFFFFF 50%, #143A8C 72%, #0B2258 100%);
+    }
+
+    /* Rimappatura automatica della vecchia palette oro/nero nello stile Rosso-Bianco-Blu della locandina */
+    .bg-\[\#07101E\] {
+      background-color: transparent !important;
+    }
+    .bg-\[\#050B14\] {
+      background: linear-gradient(90deg, rgba(7, 25, 66, 0.94) 0%, rgba(11, 34, 88, 0.94) 60%, rgba(140, 14, 35, 0.90) 100%) !important;
+      backdrop-filter: blur(12px);
+    }
+    .bg-\[\#0F223D\],
+    .bg-\[\#0F223D\]\/80,
+    .bg-\[\#0F223D\]\/95 {
+      background: linear-gradient(145deg, rgba(11, 34, 88, 0.90) 0%, rgba(7, 24, 64, 0.92) 100%) !important;
+      backdrop-filter: blur(14px);
+    }
+    .bg-\[\#0A1628\],
+    .bg-\[\#0A1628\]\/90,
+    .bg-\[\#0A1628\]\/80,
+    .bg-\[\#0A1628\]\/60 {
+      background-color: rgba(6, 19, 52, 0.88) !important;
+    }
+
+    /* Rimappatura accenti dorati -> Rosso & Bianco Passione Infinita */
+    .text-\[\#D4AF37\] {
+      color: #FF4D67 !important;
+    }
+    .text-\[\#F5D76E\] {
+      color: #FFFFFF !important;
+      text-shadow: 0 1px 8px rgba(200, 16, 46, 0.35);
+    }
+    .border-\[\#D4AF37\],
+    .border-\[\#D4AF37\]\/60,
+    .border-\[\#D4AF37\]\/50,
+    .border-\[\#D4AF37\]\/40,
+    .border-\[\#D4AF37\]\/30 {
+      border-color: rgba(200, 16, 46, 0.75) !important;
+    }
+    .bg-\[\#D4AF37\] {
+      background: linear-gradient(135deg, #C8102E 0%, #E31837 100%) !important;
+      color: #FFFFFF !important;
+    }
+    .bg-\[\#D4AF37\]\/20,
+    .bg-\[\#D4AF37\]\/15,
+    .bg-\[\#D4AF37\]\/10 {
+      background-color: rgba(200, 16, 46, 0.22) !important;
+    }
+    .from-\[\#D4AF37\].to-\[\#B38F22\] {
+      background-image: linear-gradient(135deg, #C8102E 0%, #9E0B22 50%, #0B2258 100%) !important;
+      color: #FFFFFF !important;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+    .text-\[\#0A1628\] {
+      color: #FFFFFF !important;
+    }
+    .bg-white .text-\[\#0A1628\],
+    button.bg-white {
+      color: #0B2258 !important;
+    }
+
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #071942;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #C8102E, #143A8C);
+      border-radius: 9999px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Pulizia eventuali vecchie cache Service Worker (non tocca mai i dati localStorage) -->
+  <script>
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        keys.forEach((k) => {
+          if (k !== 'passione-infinita-pwa-v14') caches.delete(k);
+        });
+      });
+    }
+  </script>
+
+  <!-- Dati iniziali, utilità e servizi Firebase -->
+  <script src="./src/data/initialData.js?v=14"></script>
+  <script src="./src/utils/helpers.js?v=14"></script>
+  <script src="./src/firebase/firebaseService.js?v=14"></script>
+
+  <!-- Componenti e Viste React (Sito Pubblico + Area Riservata Soci) -->
+  <script type="text/babel" src="./src/components/CommonUI.js?v=14"></script>
+  <script type="text/babel" src="./src/views/PublicSiteViews.js?v=14"></script>
+  <script type="text/babel" src="./src/views/AuthAndPendingViews.js?v=14"></script>
+  <script type="text/babel" src="./src/views/MemberViews.js?v=14"></script>
+  <script type="text/babel" src="./src/views/CommunityAndAdminViews.js?v=14"></script>
+  <script type="text/babel" src="./src/app.js?v=14"></script>
+
+  <!-- Registrazione Service Worker PWA -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js?v=14').then((reg) => {
+          reg.update();
+        }).catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>

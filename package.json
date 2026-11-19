@@ -1,0 +1,16 @@
+{
+  "name": "passione-infinita-pwa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Progressive Web App per l'Associazione Culturale Passione Infinita - Festa dei Gigli di Barra",
+  "scripts": {
+    "start": "node server.js",
+    "firebase:login": "npx -y firebase-tools@latest login",
+    "firebase:deploy": "npx -y firebase-tools@latest deploy"
+  },
+  "dependencies": {
+    "firebase": "^11.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

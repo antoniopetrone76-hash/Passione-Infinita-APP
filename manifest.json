@@ -1,0 +1,26 @@
+{
+  "name": "Passione Infinita - Associazione Culturale",
+  "short_name": "Passione Infinita",
+  "description": "Applicazione ufficiale dell'Associazione Culturale Passione Infinita - Festa dei Gigli di Barra",
+  "lang": "it-IT",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B2258",
+  "theme_color": "#C8102E",
+  "icons": [
+    {
+      "src": "logo-passione-infinita.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo-passione-infinita.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

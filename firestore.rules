@@ -1,0 +1,805 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model - "Passione Infinita" Association Platform
+// (Mixed Public Institutional Website + Reserved Member Area PWA)
+// ===============================================================
+//
+// This security rules file enforces role-based access control (RBAC),
+// public vs. reserved ('public' vs 'members_only') content visibility,
+// approval-gated member area access, nominal one-vote-per-member guarantees,
+// two-channel notifications ('public' vs 'members'), and strict schema/size
+// validation for the "Passione Infinita" platform.
+//
+// 1. Collection: /users/{userId}
+//    Fields:
+//      - uid: string (required, immutable, matches userId)
+//      - memberNumber: string (optional/required, managed by admin)
+//      - memberType: string (optional, <= 100 chars, managed by admin)
+//      - firstName: string (required, 1..100 chars)
+//      - lastName: string (required, 1..100 chars)
+//      - birthDate: string (optional, <= 40 chars)
+//      - address: string (optional, <= 300 chars)
+//      - email: string (required, valid email, <= 254 chars)
+//      - phone: string (optional, <= 40 chars)
+//      - joinDate: string (optional, <= 40 chars, managed by admin)
+//      - expiryDate: string (optional, <= 40 chars, managed by admin)
+//      - photoUrl: string (optional, <= 2048 chars)
+//      - role: 'admin' | 'moderator' | 'member' (required, admin-only change)
+//      - status: 'pending' | 'approved' | 'suspended' (required, admin-only change)
+//      - membershipStatus: 'in_regola' | 'da_pagare' | 'scaduto' (optional/required, admin-only change)
+//      - customAnnualFee: number (optional, >= 0, admin-only change)
+//      - lastAccess, createdAt, updatedAt: string | timestamp (optional)
+//
+// 1b. Collection: /settings/{settingId} (e.g., /settings/fees)
+//    Fields:
+//      - annualFee: number (optional, >= 0)
+//      - monthlyFee: number (optional, >= 0)
+//      - currency, notes, updatedBy: string (optional)
+//      - createdAt, updatedAt: string | timestamp (optional)
+//
+// 2. Collection: /payments/{paymentId}
+//    Fields:
+//      - userId: string (required, <= 128 chars)
+//      - memberName: string (optional, <= 200 chars)
+//      - memberNumber: string (optional, <= 50 chars)
+//      - amount: number (required, >= 0)
+//      - type, period, method, notes, receiptUrl: string (optional)
+//      - status: 'in_regola' | 'da_pagare' | 'scaduto' | 'pagato' | 'in_attesa' (optional/required)
+//      - date, paymentDate, expiryDate, createdAt, updatedAt: string | timestamp (optional)
+//
+// 3. Collection: /communications/{commId}
+//    Fields:
+//      - visibility: 'public' | 'members_only' (optional/required)
+//      - title: string (required, 1..300 chars)
+//      - body / content: string (optional/required, <= 20000 chars)
+//      - category / priority: string (optional, <= 100 chars)
+//      - author, authorId, authorName: string (optional, <= 200 chars)
+//      - sharedOnFacebook, pinned, important: bool (optional)
+//      - facebookUrl, attachmentUrl: string (optional, <= 2048 chars)
+//      - likesCount: number (optional, >= 0)
+//      - createdAt, updatedAt, date: string | timestamp (optional)
+//
+// 4. Collection: /events/{eventId} & /events/{eventId}/rsvps/{userId}
+//    Event Fields:
+//      - visibility: 'public' | 'members_only' (optional/required)
+//      - type: string (optional, <= 100 chars)
+//      - title: string (required, 1..300 chars)
+//      - description: string (optional, <= 10000 chars)
+//      - date, endDate, time, createdAt, updatedAt: string | timestamp (optional)
+//      - location, address: string (optional, <= 500 chars)
+//      - imageUrl, facebookUrl: string (optional, <= 2048 chars)
+//      - sharedOnFacebook: bool (optional)
+//    RSVP Fields:
+//      - userId: string (required, matches {userId} and request.auth.uid)
+//      - status: 'partecipo' | 'non_partecipo' | 'da_confermare' (required)
+//      - userName, userPhoto, notes: string (optional)
+//      - updatedAt, createdAt: string | timestamp (optional)
+//
+// 5. Collection: /minutes/{minuteId} (Meeting Minutes / Verbali PDF - Reserved to Approved Members)
+//    Fields:
+//      - title: string (required, 1..300 chars)
+//      - description / summary: string (optional, <= 5000 chars)
+//      - pdfUrl / fileUrl: string (optional, <= 2048 chars)
+//      - author, fileName, fileSize: string (optional)
+//      - clauses: list (optional, <= 50 items)
+//      - meetingDate, date, createdAt, updatedAt: string | timestamp (optional)
+//
+// 6. Collection: /polls/{pollId} & /polls/{pollId}/votes/{userId}
+//    Poll Fields:
+//      - category: string (optional, <= 100 chars)
+//      - title / question: string (required, 1..500 chars)
+//      - description: string (optional, <= 5000 chars)
+//      - coverImage: string (optional, <= 2048 chars)
+//      - options: list (required, 2..50 items, each with label and optional imageUrl)
+//      - status: 'open' | 'closed' | 'attivo' | 'chiuso' (optional)
+//      - deadline, expiresAt, createdAt, updatedAt: string | timestamp (optional)
+//    Vote Fields:
+//      - userId: string (required, immutable, matches {userId} and request.auth.uid)
+//      - optionId / optionIndex / selectedOption: string | number (required)
+//      - userName, memberName, memberNumber: string (optional, <= 200 chars)
+//      - timestamp, createdAt, votedAt: string | timestamp (optional)
+//
+// 7. Collection: /galleries/{mediaId}, /comments/{commentId}, /votes/{userId}
+//    Media Fields:
+//      - visibility: 'public' | 'members_only' (optional/required)
+//      - title, caption, description: string (optional, <= 2000 chars)
+//      - mediaUrl / url: string (required, <= 2048 chars)
+//      - thumbnailUrl, facebookPostUrl: string (optional, <= 2048 chars)
+//      - importedFromFacebook: bool (optional)
+//      - type / mediaType: 'photo' | 'video' | 'image' (optional)
+//      - eventId, eventName, album, videoDuration: string (optional, <= 200 chars)
+//      - fbLikesCount, likesCount, commentsCount: number (optional, >= 0)
+//
+// 8. Collection: /posts/{postId} & /posts/{postId}/comments/{commentId}
+//    Post Fields:
+//      - visibility: 'public' | 'members_only' (optional/required)
+//      - authorId: string (required, immutable, matches request.auth.uid on create)
+//      - authorName, authorPhoto, authorRole: string (optional)
+//      - content / text / title: string (required, 1..10000 chars)
+//      - mediaUrl / imageUrl: string (optional, <= 2048 chars)
+//      - pinned, locked: bool (optional)
+//
+// 9. Collection: /site_content/{docId} (Chi Siamo, Storia, Valori, Contatti, Riepilogo AI)
+//    Fields:
+//      - heroTitle, heroSubtitle, aboutIntro, missionText, historyNarrative: string (optional, <= 20000 chars)
+//      - objectives, values, milestones: list (optional, <= 100 items)
+//      - contacts, aiAnnualSummary: map (optional)
+//      - updatedAt, createdAt: string | timestamp (optional)
+//
+// 10. Collection: /social_hub/{docId} (Facebook Sync Posts & Connector Configuration)
+//    Fields:
+//      - source, category, title, content, authorName, authorAvatar, mediaUrl, mediaType, facebookPostUrl: string (optional)
+//      - pageName, pageUrl, pageId, connectedStatus, lastSyncAt: string (optional)
+//      - autoSyncEnabled, autoPublishPublicContent: bool (optional)
+//      - likesCount, syncedPostsCount: number (optional, >= 0)
+//      - date, createdAt, updatedAt: string | timestamp (optional)
+//
+// 11. Collection: /notifications/{notifId} & /public_subscribers/{subId}
+//    Notification Fields:
+//      - channel: 'public' | 'members' (required)
+//      - type, title, message, targetTab: string (required/optional)
+//      - date, createdAt: string | timestamp (optional)
+//    Public Subscriber Fields:
+//      - name: string (required, 1..150 chars)
+//      - email: string (required, valid email, <= 254 chars)
+//      - date, createdAt: string | timestamp (optional)
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function userDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasUserDoc() {
+      return isAuthenticated() && exists(userDocPath());
+    }
+
+    function getUserData() {
+      return get(userDocPath()).data;
+    }
+
+    // Core Approval Gate: Only members whose status is 'approved' can access reserved association content.
+    // Users with status == 'pending' or 'suspended' are strictly blocked from reserved content.
+    function isApprovedMember() {
+      return hasUserDoc() && getUserData().status == 'approved';
+    }
+
+    // Role checks require the user to be an active approved member
+    function isAdmin() {
+      return isApprovedMember() && getUserData().role == 'admin';
+    }
+
+    function isModeratorOrAdmin() {
+      return isApprovedMember() &&
+        (getUserData().role == 'admin' || getUserData().role == 'moderator');
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidOptionalString(data, field, maxLen) {
+      return !(field in data) || data[field] == null ||
+        (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isValidRequiredString(data, field, minLen, maxLen) {
+      return (field in data) && data[field] is string &&
+        data[field].size() >= minLen && data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalDateOrTimestamp(data, field) {
+      return !(field in data) || data[field] == null ||
+        data[field] is timestamp ||
+        (data[field] is string && data[field].size() <= 64);
+    }
+
+    function isValidOptionalVisibility(data) {
+      return !('visibility' in data) || data.visibility in ['public', 'members_only'];
+    }
+
+    function isValidEmailFormat(email) {
+      return email is string && email.size() >= 3 && email.size() <= 254 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update rules)
+    // ===============================================================
+
+    function isValidUser(data, userId) {
+      return data.keys().size() <= 25 &&
+        isValidRequiredString(data, 'uid', 1, 128) &&
+        data.uid == userId &&
+        isValidRequiredString(data, 'firstName', 1, 100) &&
+        isValidRequiredString(data, 'lastName', 1, 100) &&
+        ('email' in data && isValidEmailFormat(data.email)) &&
+        ('role' in data && data.role in ['admin', 'moderator', 'member']) &&
+        ('status' in data && data.status in ['pending', 'approved', 'suspended']) &&
+        (!('membershipStatus' in data) || data.membershipStatus in ['in_regola', 'da_pagare', 'scaduto']) &&
+        isValidOptionalString(data, 'memberNumber', 50) &&
+        isValidOptionalString(data, 'memberType', 100) &&
+        isValidOptionalString(data, 'birthDate', 40) &&
+        isValidOptionalString(data, 'address', 300) &&
+        isValidOptionalString(data, 'phone', 40) &&
+        isValidOptionalString(data, 'joinDate', 40) &&
+        isValidOptionalString(data, 'expiryDate', 40) &&
+        isValidOptionalString(data, 'photoUrl', 2048) &&
+        isValidOptionalString(data, 'notes', 2000) &&
+        (!('customAnnualFee' in data) || data.customAnnualFee == null ||
+          (data.customAnnualFee is number && data.customAnnualFee >= 0 && data.customAnnualFee <= 1000000)) &&
+        isValidOptionalDateOrTimestamp(data, 'lastAccess') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidSetting(data) {
+      return data.keys().size() <= 20 &&
+        (!('annualFee' in data) || data.annualFee == null ||
+          (data.annualFee is number && data.annualFee >= 0 && data.annualFee <= 1000000)) &&
+        (!('monthlyFee' in data) || data.monthlyFee == null ||
+          (data.monthlyFee is number && data.monthlyFee >= 0 && data.monthlyFee <= 1000000)) &&
+        isValidOptionalString(data, 'currency', 10) &&
+        isValidOptionalString(data, 'notes', 2000) &&
+        isValidOptionalString(data, 'updatedBy', 128) &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidPayment(data) {
+      return data.keys().size() <= 20 &&
+        isValidRequiredString(data, 'userId', 1, 128) &&
+        ('amount' in data && data.amount is number && data.amount >= 0 && data.amount <= 1000000) &&
+        (!('status' in data) || data.status in ['in_regola', 'da_pagare', 'scaduto', 'pagato', 'in_attesa']) &&
+        isValidOptionalString(data, 'memberName', 200) &&
+        isValidOptionalString(data, 'memberNumber', 50) &&
+        isValidOptionalString(data, 'type', 100) &&
+        isValidOptionalString(data, 'period', 200) &&
+        isValidOptionalString(data, 'description', 1000) &&
+        isValidOptionalString(data, 'method', 100) &&
+        isValidOptionalString(data, 'notes', 2000) &&
+        isValidOptionalString(data, 'receiptUrl', 2048) &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'paymentDate') &&
+        isValidOptionalDateOrTimestamp(data, 'expiryDate') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidCommunication(data) {
+      return data.keys().size() <= 25 &&
+        isValidOptionalVisibility(data) &&
+        isValidRequiredString(data, 'title', 1, 300) &&
+        isValidOptionalString(data, 'body', 20000) &&
+        isValidOptionalString(data, 'content', 20000) &&
+        isValidOptionalString(data, 'summary', 1000) &&
+        isValidOptionalString(data, 'category', 100) &&
+        isValidOptionalString(data, 'priority', 50) &&
+        isValidOptionalString(data, 'author', 200) &&
+        isValidOptionalString(data, 'authorId', 128) &&
+        isValidOptionalString(data, 'authorName', 200) &&
+        isValidOptionalString(data, 'facebookUrl', 2048) &&
+        isValidOptionalString(data, 'attachmentUrl', 2048) &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidEvent(data) {
+      return data.keys().size() <= 25 &&
+        isValidOptionalVisibility(data) &&
+        isValidRequiredString(data, 'title', 1, 300) &&
+        isValidOptionalString(data, 'type', 100) &&
+        isValidOptionalString(data, 'description', 10000) &&
+        isValidOptionalString(data, 'location', 500) &&
+        isValidOptionalString(data, 'address', 500) &&
+        isValidOptionalString(data, 'category', 100) &&
+        isValidOptionalString(data, 'imageUrl', 2048) &&
+        isValidOptionalString(data, 'facebookUrl', 2048) &&
+        isValidOptionalString(data, 'time', 50) &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'endDate') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidRsvp(data, userId) {
+      return data.keys().size() <= 15 &&
+        isValidRequiredString(data, 'userId', 1, 128) &&
+        data.userId == userId &&
+        ('status' in data && data.status in ['partecipo', 'non_partecipo', 'da_confermare']) &&
+        isValidOptionalString(data, 'userName', 200) &&
+        isValidOptionalString(data, 'name', 200) &&
+        isValidOptionalString(data, 'userPhoto', 2048) &&
+        isValidOptionalString(data, 'memberNumber', 50) &&
+        isValidOptionalString(data, 'notes', 500) &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidMinute(data) {
+      return data.keys().size() <= 20 &&
+        isValidRequiredString(data, 'title', 1, 300) &&
+        isValidOptionalString(data, 'description', 5000) &&
+        isValidOptionalString(data, 'summary', 5000) &&
+        isValidOptionalString(data, 'pdfUrl', 2048) &&
+        isValidOptionalString(data, 'fileUrl', 2048) &&
+        isValidOptionalString(data, 'fileName', 300) &&
+        isValidOptionalString(data, 'fileSize', 50) &&
+        isValidOptionalString(data, 'author', 200) &&
+        isValidOptionalString(data, 'authorId', 128) &&
+        isValidOptionalString(data, 'authorName', 200) &&
+        (!('clauses' in data) || (data.clauses is list && data.clauses.size() <= 50)) &&
+        isValidOptionalDateOrTimestamp(data, 'meetingDate') &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidPoll(data) {
+      return data.keys().size() <= 25 &&
+        (isValidRequiredString(data, 'title', 1, 500) || isValidRequiredString(data, 'question', 1, 500)) &&
+        isValidOptionalString(data, 'category', 100) &&
+        isValidOptionalString(data, 'description', 5000) &&
+        isValidOptionalString(data, 'coverImage', 2048) &&
+        ('options' in data && data.options is list && data.options.size() >= 2 && data.options.size() <= 50) &&
+        isValidOptionalString(data, 'status', 40) &&
+        isValidOptionalString(data, 'authorId', 128) &&
+        isValidOptionalString(data, 'authorName', 200) &&
+        isValidOptionalDateOrTimestamp(data, 'deadline') &&
+        isValidOptionalDateOrTimestamp(data, 'expiresAt') &&
+        isValidOptionalDateOrTimestamp(data, 'endDate') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidPollVote(data, userId) {
+      return data.keys().size() <= 12 &&
+        isValidRequiredString(data, 'userId', 1, 128) &&
+        data.userId == userId &&
+        (('optionId' in data && data.optionId is string && data.optionId.size() <= 128) ||
+         ('optionIndex' in data && data.optionIndex is int && data.optionIndex >= 0 && data.optionIndex < 50) ||
+         ('selectedOption' in data && data.selectedOption is string && data.selectedOption.size() <= 300)) &&
+        isValidOptionalString(data, 'userName', 200) &&
+        isValidOptionalString(data, 'memberName', 200) &&
+        isValidOptionalString(data, 'memberNumber', 50) &&
+        isValidOptionalString(data, 'pollId', 128) &&
+        isValidOptionalDateOrTimestamp(data, 'timestamp') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'votedAt');
+    }
+
+    function isValidGalleryMedia(data) {
+      return data.keys().size() <= 25 &&
+        isValidOptionalVisibility(data) &&
+        (isValidRequiredString(data, 'mediaUrl', 1, 2048) || isValidRequiredString(data, 'url', 1, 2048)) &&
+        isValidOptionalString(data, 'title', 300) &&
+        isValidOptionalString(data, 'caption', 2000) &&
+        isValidOptionalString(data, 'description', 2000) &&
+        isValidOptionalString(data, 'thumbnailUrl', 2048) &&
+        isValidOptionalString(data, 'facebookPostUrl', 2048) &&
+        isValidOptionalString(data, 'type', 40) &&
+        isValidOptionalString(data, 'mediaType', 40) &&
+        isValidOptionalString(data, 'eventId', 128) &&
+        isValidOptionalString(data, 'eventName', 300) &&
+        isValidOptionalString(data, 'album', 200) &&
+        isValidOptionalString(data, 'videoDuration', 40) &&
+        isValidOptionalString(data, 'authorId', 128) &&
+        isValidOptionalString(data, 'authorName', 200) &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidGalleryVote(data, userId) {
+      return data.keys().size() <= 10 &&
+        isValidRequiredString(data, 'userId', 1, 128) &&
+        data.userId == userId &&
+        isValidOptionalString(data, 'userName', 200) &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt');
+    }
+
+    function isValidPost(data) {
+      return data.keys().size() <= 25 &&
+        isValidOptionalVisibility(data) &&
+        isValidRequiredString(data, 'authorId', 1, 128) &&
+        (isValidRequiredString(data, 'content', 1, 10000) || isValidRequiredString(data, 'text', 1, 10000)) &&
+        isValidOptionalString(data, 'type', 100) &&
+        isValidOptionalString(data, 'title', 300) &&
+        isValidOptionalString(data, 'authorName', 200) &&
+        isValidOptionalString(data, 'authorPhoto', 2048) &&
+        isValidOptionalString(data, 'authorRole', 50) &&
+        isValidOptionalString(data, 'memberNumber', 50) &&
+        isValidOptionalString(data, 'mediaUrl', 2048) &&
+        isValidOptionalString(data, 'imageUrl', 2048) &&
+        isValidOptionalString(data, 'category', 100) &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidComment(data) {
+      return data.keys().size() <= 15 &&
+        isValidRequiredString(data, 'authorId', 1, 128) &&
+        (isValidRequiredString(data, 'text', 1, 3000) || isValidRequiredString(data, 'content', 1, 3000)) &&
+        isValidOptionalString(data, 'authorName', 200) &&
+        isValidOptionalString(data, 'authorPhoto', 2048) &&
+        isValidOptionalString(data, 'authorRole', 50) &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidSiteContent(data) {
+      return data.keys().size() <= 30 &&
+        isValidOptionalString(data, 'heroTitle', 500) &&
+        isValidOptionalString(data, 'heroSubtitle', 1000) &&
+        isValidOptionalString(data, 'aboutIntro', 10000) &&
+        isValidOptionalString(data, 'missionText', 10000) &&
+        isValidOptionalString(data, 'historyNarrative', 20000) &&
+        isValidOptionalString(data, 'summaryText', 20000) &&
+        (!('objectives' in data) || (data.objectives is list && data.objectives.size() <= 50)) &&
+        (!('values' in data) || (data.values is list && data.values.size() <= 50)) &&
+        (!('milestones' in data) || (data.milestones is list && data.milestones.size() <= 100)) &&
+        isValidOptionalDateOrTimestamp(data, 'lastGeneratedAt') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidSocialHubDoc(data) {
+      return data.keys().size() <= 25 &&
+        isValidOptionalString(data, 'source', 100) &&
+        isValidOptionalString(data, 'category', 100) &&
+        isValidOptionalString(data, 'title', 500) &&
+        isValidOptionalString(data, 'content', 10000) &&
+        isValidOptionalString(data, 'authorName', 200) &&
+        isValidOptionalString(data, 'authorAvatar', 2048) &&
+        isValidOptionalString(data, 'mediaUrl', 2048) &&
+        isValidOptionalString(data, 'mediaType', 50) &&
+        isValidOptionalString(data, 'facebookPostUrl', 2048) &&
+        isValidOptionalString(data, 'pageName', 200) &&
+        isValidOptionalString(data, 'pageUrl', 2048) &&
+        isValidOptionalString(data, 'pageId', 200) &&
+        isValidOptionalString(data, 'connectedStatus', 50) &&
+        isValidOptionalDateOrTimestamp(data, 'lastSyncAt') &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt') &&
+        isValidOptionalDateOrTimestamp(data, 'updatedAt');
+    }
+
+    function isValidNotification(data) {
+      return data.keys().size() <= 15 &&
+        ('channel' in data && data.channel in ['public', 'members']) &&
+        isValidRequiredString(data, 'title', 1, 300) &&
+        isValidOptionalString(data, 'message', 2000) &&
+        isValidOptionalString(data, 'type', 100) &&
+        isValidOptionalString(data, 'targetTab', 100) &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt');
+    }
+
+    function isValidPublicSubscriber(data) {
+      return data.keys().size() <= 10 &&
+        isValidRequiredString(data, 'name', 1, 150) &&
+        ('email' in data && isValidEmailFormat(data.email)) &&
+        isValidOptionalDateOrTimestamp(data, 'date') &&
+        isValidOptionalDateOrTimestamp(data, 'createdAt');
+    }
+
+    // ===============================================================
+    // 1. Users Collection (/users/{userId})
+    // ===============================================================
+    match /users/{userId} {
+      // Users can always read their own profile (to check pending/approved/suspended status).
+      // Approved members can read member profiles; admins can read all user documents.
+      allow read: if isOwner(userId) || isApprovedMember() || isAdmin();
+
+      // Registration: A user can register their own profile ONLY with role == 'member'
+      // and status == 'pending'. Admins can create any valid user document.
+      allow create: if isAuthenticated() &&
+        isValidUser(request.resource.data, userId) &&
+        (
+          (isOwner(userId) &&
+           request.resource.data.role == 'member' &&
+           request.resource.data.status == 'pending' &&
+           (!('customAnnualFee' in request.resource.data) || request.resource.data.customAnnualFee == null)) ||
+          isAdmin()
+        );
+
+      // Update:
+      // - User can update ONLY their own personal fields ('firstName', 'lastName',
+      //   'birthDate', 'address', 'phone', 'email', 'photoUrl', 'updatedAt') without
+      //   altering administrative or membership fields ('uid', 'role', 'status',
+      //   'memberNumber', 'memberType', 'joinDate', 'expiryDate', 'membershipStatus', 'customAnnualFee').
+      // - Admin can update all fields on any user document (approvals, suspensions, roles, renewals, custom fees, memberType).
+      allow update: if isAuthenticated() &&
+        isValidUser(request.resource.data, userId) &&
+        (
+          (isOwner(userId) &&
+           areImmutableFieldsUnchanged([
+             'uid',
+             'role',
+             'status',
+             'memberNumber',
+             'memberType',
+             'joinDate',
+             'expiryDate',
+             'membershipStatus',
+             'customAnnualFee'
+           ]) &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+             'firstName',
+             'lastName',
+             'birthDate',
+             'address',
+             'phone',
+             'email',
+             'photoUrl',
+             'updatedAt'
+           ])) ||
+          isAdmin()
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 1b. Association Settings (/settings/{settingId})
+    // ===============================================================
+    match /settings/{settingId} {
+      // Approved members can read association settings (e.g., /settings/fees).
+      allow read: if isApprovedMember() || isAdmin();
+
+      // Only admins can create, update, or delete settings documents.
+      allow create: if isAdmin() && isValidSetting(request.resource.data);
+      allow update: if isAdmin() && isValidSetting(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 2. Payments & Fees (/payments/{paymentId})
+    // ===============================================================
+    match /payments/{paymentId} {
+      allow read: if isAdmin() ||
+        (isApprovedMember() && resource.data.userId == request.auth.uid);
+
+      allow create: if isAdmin() && isValidPayment(request.resource.data);
+      allow update: if isAdmin() && isValidPayment(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 3. Communications (/communications/{commId})
+    //    Public ('public') vs Reserved ('members_only')
+    // ===============================================================
+    match /communications/{commId} {
+      allow read: if resource.data.visibility == 'public' || isApprovedMember() || isAdmin();
+
+      allow create: if isAdmin() && isValidCommunication(request.resource.data);
+      allow update: if isAdmin() && isValidCommunication(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 4. Events & RSVPs (/events/{eventId} & /events/{eventId}/rsvps/{userId})
+    //    Public ('public') vs Reserved ('members_only')
+    // ===============================================================
+    match /events/{eventId} {
+      allow read: if resource.data.visibility == 'public' || isApprovedMember() || isAdmin();
+
+      allow create: if isAdmin() && isValidEvent(request.resource.data);
+      allow update: if isAdmin() && isValidEvent(request.resource.data);
+      allow delete: if isAdmin();
+
+      match /rsvps/{userId} {
+        allow read: if isApprovedMember() || isAdmin();
+
+        allow create, update: if isValidRsvp(request.resource.data, userId) &&
+          (
+            (isApprovedMember() &&
+             isOwner(userId) &&
+             request.resource.data.userId == request.auth.uid) ||
+            isAdmin()
+          );
+
+        allow delete: if (isApprovedMember() && isOwner(userId)) || isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // 5. Meeting Minutes / Verbali PDF (/minutes/{minuteId})
+    //    Strictly reserved to approved members
+    // ===============================================================
+    match /minutes/{minuteId} {
+      // Strictly invisible to unapproved ('pending'), 'suspended', or public users
+      allow read: if isApprovedMember() || isAdmin();
+
+      allow create: if isAdmin() && isValidMinute(request.resource.data);
+      allow update: if isAdmin() && isValidMinute(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 6. Nominal Polls & Voting (/polls/{pollId} & /polls/{pollId}/votes/{userId})
+    // ===============================================================
+    match /polls/{pollId} {
+      allow read: if isApprovedMember() || isAdmin();
+
+      allow create: if isAdmin() && isValidPoll(request.resource.data);
+      allow update: if isAdmin() && isValidPoll(request.resource.data);
+      allow delete: if isAdmin();
+
+      match /votes/{userId} {
+        allow read: if isApprovedMember() || isAdmin();
+
+        // Nominal one-time vote per member:
+        // Document ID must equal the voter's UID, userId field must match request.auth.uid,
+        // and the vote document must not already exist.
+        allow create: if isApprovedMember() &&
+          isOwner(userId) &&
+          request.resource.data.userId == request.auth.uid &&
+          !exists(/databases/$(database)/documents/polls/$(pollId)/votes/$(userId)) &&
+          isValidPollVote(request.resource.data, userId);
+
+        // Regular members cannot alter or delete a cast vote
+        allow update: if isAdmin() &&
+          isValidPollVote(request.resource.data, userId) &&
+          areImmutableFieldsUnchanged(['userId']);
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // 7. Photo & Video Gallery (/galleries/{mediaId})
+    //    Public ('public') vs Reserved ('members_only')
+    // ===============================================================
+    match /galleries/{mediaId} {
+      allow read: if resource.data.visibility == 'public' || isApprovedMember() || isAdmin();
+
+      allow create: if isAdmin() && isValidGalleryMedia(request.resource.data);
+      allow update: if isAdmin() && isValidGalleryMedia(request.resource.data);
+      allow delete: if isAdmin();
+
+      match /comments/{commentId} {
+        allow read: if get(/databases/$(database)/documents/galleries/$(mediaId)).data.visibility == 'public' ||
+          isApprovedMember() || isAdmin();
+
+        allow create: if isApprovedMember() &&
+          request.resource.data.authorId == request.auth.uid &&
+          isValidComment(request.resource.data);
+
+        allow update: if isValidComment(request.resource.data) &&
+          areImmutableFieldsUnchanged(['authorId', 'createdAt']) &&
+          (
+            (isApprovedMember() && resource.data.authorId == request.auth.uid) ||
+            isModeratorOrAdmin()
+          );
+
+        allow delete: if (isApprovedMember() && resource.data.authorId == request.auth.uid) ||
+          isModeratorOrAdmin();
+      }
+
+      match /votes/{userId} {
+        allow read: if get(/databases/$(database)/documents/galleries/$(mediaId)).data.visibility == 'public' ||
+          isApprovedMember() || isAdmin();
+
+        // One vote per member per gallery item
+        allow create: if isApprovedMember() &&
+          isOwner(userId) &&
+          request.resource.data.userId == request.auth.uid &&
+          !exists(/databases/$(database)/documents/galleries/$(mediaId)/votes/$(userId)) &&
+          isValidGalleryVote(request.resource.data, userId);
+
+        allow update: if isAdmin() && isValidGalleryVote(request.resource.data, userId);
+        allow delete: if (isApprovedMember() && isOwner(userId)) || isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // 8. Member & Public Board (/posts/{postId})
+    //    Public ('public') vs Reserved ('members_only')
+    // ===============================================================
+    match /posts/{postId} {
+      allow read: if resource.data.visibility == 'public' || isApprovedMember() || isAdmin();
+
+      allow create: if (isApprovedMember() || isAdmin()) &&
+        request.resource.data.authorId == request.auth.uid &&
+        isValidPost(request.resource.data);
+
+      allow update: if isValidPost(request.resource.data) &&
+        areImmutableFieldsUnchanged(['authorId', 'createdAt']) &&
+        (
+          (isApprovedMember() && resource.data.authorId == request.auth.uid) ||
+          isModeratorOrAdmin()
+        );
+
+      allow delete: if (isApprovedMember() && resource.data.authorId == request.auth.uid) ||
+        isModeratorOrAdmin();
+
+      match /comments/{commentId} {
+        allow read: if get(/databases/$(database)/documents/posts/$(postId)).data.visibility == 'public' ||
+          isApprovedMember() || isAdmin();
+
+        allow create: if isApprovedMember() &&
+          request.resource.data.authorId == request.auth.uid &&
+          isValidComment(request.resource.data);
+
+        allow update: if isValidComment(request.resource.data) &&
+          areImmutableFieldsUnchanged(['authorId', 'createdAt']) &&
+          (
+            (isApprovedMember() && resource.data.authorId == request.auth.uid) ||
+            isModeratorOrAdmin()
+          );
+
+        allow delete: if (isApprovedMember() && resource.data.authorId == request.auth.uid) ||
+          isModeratorOrAdmin();
+      }
+    }
+
+    // ===============================================================
+    // 9. Association History & Public Pages (/site_content/{docId})
+    //    ("Chi siamo", "Storia dell'associazione", "Contatti", Riepilogo AI)
+    // ===============================================================
+    match /site_content/{docId} {
+      allow read: if true;
+
+      allow create: if isAdmin() && isValidSiteContent(request.resource.data);
+      allow update: if isAdmin() && isValidSiteContent(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 10. Social Hub & Facebook Sync Logs (/social_hub/{docId})
+    // ===============================================================
+    match /social_hub/{docId} {
+      allow read: if true;
+
+      allow create: if isAdmin() && isValidSocialHubDoc(request.resource.data);
+      allow update: if isAdmin() && isValidSocialHubDoc(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // 11. Two Notification Channels (/notifications/{notifId})
+    //     & Public Notification Subscribers (/public_subscribers/{subId})
+    // ===============================================================
+    match /notifications/{notifId} {
+      // 'public' channel notifications are readable by everyone;
+      // 'members' channel notifications are readable only by approved members and admins.
+      allow read: if resource.data.channel == 'public' || isApprovedMember() || isAdmin();
+
+      allow create: if isAdmin() && isValidNotification(request.resource.data);
+      allow update: if isAdmin() && isValidNotification(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /public_subscribers/{subId} {
+      // Anyone can subscribe to public website notifications; only admins can read or manage subscribers.
+      allow read: if isAdmin();
+      allow create: if isValidPublicSubscriber(request.resource.data);
+      allow update: if isAdmin() && isValidPublicSubscriber(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Default Deny Catch-All
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

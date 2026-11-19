@@ -1,0 +1,40 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function getUserData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    function isApproved() {
+      return isSignedIn() && getUserData().status == 'approved';
+    }
+    function isAdmin() {
+      return isApproved() && getUserData().role == 'admin';
+    }
+
+    // Fotografie profilo soci
+    match /avatars/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin())
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // Verbali PDF - rigorosamente riservati ai soci approvati
+    match /minutes/{fileName} {
+      allow read: if isApproved();
+      allow write: if isAdmin()
+                   && request.resource.size < 20 * 1024 * 1024
+                   && request.resource.contentType == 'application/pdf';
+    }
+
+    // Galleria fotografica e video (caricamento riservato agli amministratori)
+    match /gallery/{eventId}/{fileName} {
+      allow read: if isApproved();
+      allow write: if isAdmin()
+                   && request.resource.size < 50 * 1024 * 1024;
+    }
+  }
+}
